@@ -27,28 +27,9 @@ const MODEL_URL='https://github.com/qduoduo-hwh/gptblender_demo/raw/refs/heads/m
 const loader=new GLTFLoader();
 let masterModel=null;
 
-function fallbackVilla(){
-  const g=new THREE.Group();
-  const wall=new THREE.MeshStandardMaterial({color:0xd7d1c5,roughness:.72});
-  const dark=new THREE.MeshStandardMaterial({color:0x242a29,roughness:.35,metalness:.08});
-  const glass=new THREE.MeshPhysicalMaterial({color:0x79a8ad,roughness:.08,metalness:.05,transmission:.12,transparent:true,opacity:.86});
-  const box=(w,h,d,x,y,z,m)=>{const o=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),m);o.position.set(x,y,z);o.castShadow=true;o.receiveShadow=true;g.add(o)};
-  box(14,4.2,10,0,2.1,0,wall); box(9,2.6,8,2.2,5.45,.2,wall);
-  box(15.5,.45,11.5,0,4.25,0,dark); box(9.5,.4,8.5,2.2,6.8,.2,dark);
-  for(let x=-5;x<=5;x+=2.5) box(1.9,2.4,.18,x,2,-5.1,glass);
-  box(2.7,2.7,.22,-.4,2,-5.2,dark); box(2.6,2.3,.22,3.7,2,-5.2,dark);
-  return g;
-}
-
-function cloneModel(){
-  const g=masterModel?masterModel.clone(true):fallbackVilla();
-  g.traverse(o=>{if(o.isMesh){o.castShadow=true;o.receiveShadow=true;if(o.material){o.material=Array.isArray(o.material)?o.material.map(m=>m.clone()):o.material.clone()}}});
-  return g;
-}
-
 async function loadMaster(){
   if(masterModel) return masterModel;
-  return new Promise(resolve=>loader.load(MODEL_URL,g=>{masterModel=g.scene;resolve(masterModel)},undefined,()=>resolve(null)));
+  return new Promise(resolve=>loader.load(MODEL_URL,g=>{masterModel=g.scene;resolve(masterModel)},undefined,()=>{const s=document.querySelector('[data-3d-status]'); if(s){s.textContent='3D preview unavailable';} resolve(null)})));
 }
 
 function setup(canvasId,hero=false){
@@ -57,7 +38,7 @@ function setup(canvasId,hero=false){
   scene.background=new THREE.Color(hero?0x07100e:0xc5c9c2);
   const camera=new THREE.PerspectiveCamera(35,1,.1,500);
   camera.position.set(hero?13:15,hero?8:7,hero?15:17);
-  const renderer=new THREE.WebGLRenderer({canvas,antialias:true,alpha:false,powerPreference:'high-performance'});
+  const renderer=new THREE.WebGLRenderer({canvas,antialias:true,alpha:false,powerPreference:'high-performance'});\n  const status=document.createElement('div'); status.dataset['3dStatus']='1'; status.textContent='Loading 3D experience…'; status.style.cssText='position:absolute;left:26px;top:26px;z-index:8;padding:10px 12px;border:1px solid rgba(255,255,255,.14);background:rgba(7,16,14,.68);backdrop-filter:blur(8px);font:11px Manrope,sans-serif;letter-spacing:.08em;color:#f4f4ed;pointer-events:none'; canvas.parentElement.appendChild(status);
   renderer.setPixelRatio(Math.min(devicePixelRatio,1.75));
   renderer.shadowMap.enabled=true;
   renderer.shadowMap.type=THREE.PCFSoftShadowMap;
