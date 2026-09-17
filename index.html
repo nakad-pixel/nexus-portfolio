@@ -817,120 +817,246 @@ window.addEventListener('scroll', ()=>{
   headerEl.classList.toggle('scrolled', window.scrollY > 40);
 });
 
-/* ================= HERO 3D SCENE ================= */
-(function(){
-  const canvas = document.getElementById('hero-canvas');
+/* ============================================================
+   SHARED: realistic laptop-mockup builder
+   ============================================================ */
+function drawScreenTexture(theme){
+  const c = document.createElement('canvas');
+  c.width = 1280; c.height = 800;
+  const ctx = c.getContext('2d');
+  const bg = ctx.createLinearGradient(0,0,0,800);
+  bg.addColorStop(0, theme.bg1); bg.addColorStop(1, theme.bg2);
+  ctx.fillStyle = bg; ctx.fillRect(0,0,1280,800);
+  ctx.fillStyle = 'rgba(255,255,255,0.06)'; ctx.fillRect(0,0,1280,54);
+  ['#ff5f57','#febc2e','#28c840'].forEach((col,i)=>{
+    ctx.beginPath(); ctx.arc(34+i*28,27,8,0,Math.PI*2); ctx.fillStyle=col; ctx.fill();
+  });
+  ctx.fillStyle = 'rgba(255,255,255,0.35)'; ctx.font = '20px monospace';
+  ctx.fillText(theme.url, 140, 34);
+  ctx.fillStyle = theme.accent; ctx.font = 'bold 26px sans-serif';
+  ctx.fillText(theme.brand, 60, 118);
+  ctx.fillStyle = 'rgba(255,255,255,0.5)'; ctx.font = '18px sans-serif';
+  ['Work','Services','Process','Contact'].forEach((t,i)=>ctx.fillText(t, 620+i*140, 116));
+  ctx.fillStyle = '#f2f1ea'; ctx.font = '600 58px Georgia, serif';
+  wrapText(ctx, theme.headline, 60, 260, 720, 62);
+  ctx.fillStyle = 'rgba(242,241,234,0.55)'; ctx.font = '22px sans-serif';
+  wrapText(ctx, theme.sub, 60, 420, 620, 32);
+  ctx.fillStyle = theme.accent; roundRect(ctx, 60, 470, 240, 58, 6); ctx.fill();
+  ctx.fillStyle = '#07070b'; ctx.font = 'bold 20px sans-serif';
+  ctx.fillText(theme.cta, 92, 507);
+  ctx.fillStyle = 'rgba(255,255,255,0.05)'; roundRect(ctx, 820, 160, 400, 420, 14); ctx.fill();
+  ctx.strokeStyle = 'rgba(255,255,255,0.12)'; ctx.lineWidth=1;
+  roundRect(ctx, 820, 160, 400, 420, 14); ctx.stroke();
+  ctx.font = '16px monospace';
+  for(let i=0;i<5;i++){
+    ctx.fillStyle = theme.accent; ctx.fillRect(852, 210+i*68, 8,8);
+    ctx.fillStyle = 'rgba(255,255,255,0.65)'; ctx.fillText(theme.rows[i] || '', 872, 218+i*68);
+  }
+  return c;
+}
+function wrapText(ctx, text, x, y, maxWidth, lineHeight){
+  const words = text.split(' '); let line = '', cy = y;
+  for(let n=0;n<words.length;n++){
+    const test = line + words[n] + ' ';
+    if(ctx.measureText(test).width > maxWidth && n>0){
+      ctx.fillText(line, x, cy); line = words[n] + ' '; cy += lineHeight;
+    } else { line = test; }
+  }
+  ctx.fillText(line, x, cy);
+}
+function roundRect(ctx,x,y,w,h,r){
+  ctx.beginPath(); ctx.moveTo(x+r,y);
+  ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r);
+  ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath();
+}
+
+function buildLaptop(theme){
+  const laptop = new THREE.Group();
+  const baseGeo = new THREE.BoxGeometry(4.6, 0.16, 3.05);
+  const baseMat = new THREE.MeshStandardMaterial({color:0x14141a, metalness:0.55, roughness:0.48});
+  const base = new THREE.Mesh(baseGeo, baseMat);
+  base.castShadow = true; base.receiveShadow = true;
+  laptop.add(base);
+
+  const deckGeo = new THREE.BoxGeometry(4.2, 0.02, 2.6);
+  const deckMat = new THREE.MeshStandardMaterial({color:0x0e0e13, metalness:0.4, roughness:0.6});
+  const deck = new THREE.Mesh(deckGeo, deckMat);
+  deck.position.set(0, 0.09, -0.05);
+  laptop.add(deck);
+
+  const screenGroup = new THREE.Group();
+  screenGroup.position.set(0, 0.08, -1.47);
+  screenGroup.rotation.x = -0.12;
+  laptop.add(screenGroup);
+
+  const lidGeo = new THREE.BoxGeometry(4.6, 3.0, 0.14);
+  const lidMat = new THREE.MeshStandardMaterial({color:0x14141a, metalness:0.55, roughness:0.48});
+  const lid = new THREE.Mesh(lidGeo, lidMat);
+  lid.position.set(0, 1.5, -0.06); lid.castShadow = true;
+  screenGroup.add(lid);
+
+  const bezel = new THREE.Mesh(new THREE.PlaneGeometry(4.4, 2.8),
+    new THREE.MeshStandardMaterial({color:0x050507, metalness:0.2, roughness:0.8}));
+  bezel.position.set(0, 1.5, 0.011);
+  screenGroup.add(bezel);
+
+  const tex = new THREE.CanvasTexture(drawScreenTexture(theme));
+  tex.encoding = THREE.sRGBEncoding;
+  const screenMat = new THREE.MeshStandardMaterial({
+    map:tex, emissive:0xffffff, emissiveMap:tex, emissiveIntensity:0.55,
+    roughness:0.25, metalness:0.05
+  });
+  const screen = new THREE.Mesh(new THREE.PlaneGeometry(4.16, 2.6), screenMat);
+  screen.position.set(0, 1.5, 0.02);
+  screenGroup.add(screen);
+
+  laptop.userData = { screen, screenMat, base, lid };
+  return laptop;
+}
+
+function setupRealisticScene(canvas, opts){
   const scene = new THREE.Scene();
-  const camera = new THREE.PerspectiveCamera(45, canvas.clientWidth/canvas.clientHeight, 0.1, 100);
-  camera.position.set(0,0,9);
+  const camera = new THREE.PerspectiveCamera(38, canvas.clientWidth/canvas.clientHeight, 0.1, 100);
+  camera.position.set(opts.camX, opts.camY, opts.camZ);
+  camera.lookAt(0,0.3,0);
   const renderer = new THREE.WebGLRenderer({canvas, antialias:true, alpha:true});
   renderer.setPixelRatio(Math.min(window.devicePixelRatio,2));
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.outputEncoding = THREE.sRGBEncoding;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.05;
+
+  const floor = new THREE.Mesh(new THREE.PlaneGeometry(40,40), new THREE.ShadowMaterial({opacity:0.28}));
+  floor.rotation.x = -Math.PI/2; floor.position.y = -1.05; floor.receiveShadow = true;
+  scene.add(floor);
+
+  const glow = new THREE.Mesh(new THREE.CircleGeometry(3.6, 48),
+    new THREE.MeshBasicMaterial({color: opts.accentHex, transparent:true, opacity:0.025}));
+  glow.rotation.x = -Math.PI/2; glow.position.y = -1.04;
+  scene.add(glow);
+
+  const key = new THREE.DirectionalLight(0xffffff, 0.85);
+  key.position.set(4, 6, 4); key.castShadow = true;
+  key.shadow.mapSize.set(1024,1024);
+  key.shadow.camera.left=-6; key.shadow.camera.right=6;
+  key.shadow.camera.top=6; key.shadow.camera.bottom=-6;
+  key.shadow.radius = 4;
+  scene.add(key);
+
+  const fill = new THREE.DirectionalLight(0xaeb6ff, 0.35);
+  fill.position.set(-5, 2, -3); scene.add(fill);
+
+  const rim = new THREE.PointLight(opts.accentHex, 1.6, 12);
+  rim.position.set(-2.5, 1.8, -3.5); scene.add(rim);
+
+  scene.add(new THREE.HemisphereLight(0x8899aa, 0x0a0a0e, 0.55));
 
   function resize(){
     const w = canvas.clientWidth, h = canvas.clientHeight;
     renderer.setSize(w,h,false);
-    camera.aspect = w/h;
-    camera.updateProjectionMatrix();
+    camera.aspect = w/h; camera.updateProjectionMatrix();
   }
   window.addEventListener('resize', resize);
+  resize();
+  return {scene, camera, renderer, resize};
+}
 
-  const group = new THREE.Group();
-  scene.add(group);
+/* ================= HERO 3D SCENE ================= */
+(function(){
+  const canvas = document.getElementById('hero-canvas');
+  const {scene, camera, renderer} = setupRealisticScene(canvas, {camX:0.5, camY:2.2, camZ:9.5, accentHex:0x6ee7c5});
+  const theme = {
+    bg1:'#0d1a17', bg2:'#07070b', accent:'#6ee7c5', brand:'NEXUS',
+    url:'nexuswebsystems.dev', headline:'Websites that close before the call.',
+    sub:'A live 3D product mockup - not a screenshot.',
+    cta:'Start a project', rows:['Discovery call','3D concept','Build + automate','Ship + hand off','24/7 AI agent']
+  };
+  const laptop = buildLaptop(theme);
+  laptop.scale.setScalar(0.66);
+  laptop.rotation.y = -0.5;
+  laptop.position.set(1.85, -0.1, 0);
+  scene.add(laptop);
 
-  // Icosahedron wireframe core
-  const coreGeo = new THREE.IcosahedronGeometry(2.4, 1);
-  const coreMat = new THREE.MeshBasicMaterial({color:0x6ee7c5, wireframe:true, transparent:true, opacity:0.55});
-  const core = new THREE.Mesh(coreGeo, coreMat);
-  group.add(core);
-
-  const innerGeo = new THREE.IcosahedronGeometry(1.5, 0);
-  const innerMat = new THREE.MeshBasicMaterial({color:0xa78bfa, wireframe:true, transparent:true, opacity:0.4});
-  const inner = new THREE.Mesh(innerGeo, innerMat);
-  group.add(inner);
-
-  // Orbiting node points (representing automation nodes)
-  const nodeCount = 60;
-  const nodePositions = new Float32Array(nodeCount*3);
-  for(let i=0;i<nodeCount;i++){
-    const r = 3.6 + Math.random()*1.8;
-    const theta = Math.random()*Math.PI*2;
-    const phi = Math.acos((Math.random()*2)-1);
-    nodePositions[i*3]   = r*Math.sin(phi)*Math.cos(theta);
-    nodePositions[i*3+1] = r*Math.sin(phi)*Math.sin(theta);
-    nodePositions[i*3+2] = r*Math.cos(phi);
+  const dustCount = 70;
+  const dustPos = new Float32Array(dustCount*3);
+  for(let i=0;i<dustCount;i++){
+    dustPos[i*3]=(Math.random()-0.5)*10;
+    dustPos[i*3+1]=Math.random()*4-0.5;
+    dustPos[i*3+2]=(Math.random()-0.5)*10;
   }
-  const nodeGeo = new THREE.BufferGeometry();
-  nodeGeo.setAttribute('position', new THREE.BufferAttribute(nodePositions,3));
-  const nodeMat = new THREE.PointsMaterial({color:0xd4bc84, size:0.045, transparent:true, opacity:0.9});
-  const nodes = new THREE.Points(nodeGeo, nodeMat);
-  scene.add(nodes);
+  const dustGeo = new THREE.BufferGeometry();
+  dustGeo.setAttribute('position', new THREE.BufferAttribute(dustPos,3));
+  const dust = new THREE.Points(dustGeo, new THREE.PointsMaterial({color:0xd4bc84, size:0.02, transparent:true, opacity:0.5}));
+  scene.add(dust);
 
   let mouseX=0, mouseY=0;
   window.addEventListener('mousemove',(e)=>{
-    mouseX = (e.clientX/window.innerWidth - 0.5);
-    mouseY = (e.clientY/window.innerHeight - 0.5);
+    mouseX=(e.clientX/window.innerWidth-0.5);
+    mouseY=(e.clientY/window.innerHeight-0.5);
   });
 
-  resize();
-  function animate(t){
+  const t0 = performance.now();
+  function animate(){
     requestAnimationFrame(animate);
-    core.rotation.y += 0.0022;
-    core.rotation.x += 0.0009;
-    inner.rotation.y -= 0.003;
-    inner.rotation.x += 0.0015;
-    nodes.rotation.y += 0.0007;
-    group.position.x += (mouseX*0.8 - group.position.x)*0.03;
-    group.position.y += (-mouseY*0.5 - group.position.y)*0.03;
+    const t=(performance.now()-t0)/1000;
+    laptop.position.y = -0.1 + Math.sin(t*0.7)*0.05;
+    laptop.rotation.y += (-0.5 + mouseX*0.4 - laptop.rotation.y)*0.02;
+    laptop.rotation.x += (mouseY*0.12 - laptop.rotation.x)*0.02;
+    dust.rotation.y += 0.0006;
     renderer.render(scene, camera);
   }
   requestAnimationFrame(animate);
 })();
 
-/* ================= DEMO 3D SCENE (multi-mode) ================= */
+/* ================= DEMO 3D SCENE (multi-industry) ================= */
 (function(){
   const canvas = document.getElementById('demo-canvas');
-  const scene = new THREE.Scene();
-  const camera = new THREE.PerspectiveCamera(42, canvas.clientWidth/canvas.clientHeight, 0.1, 100);
-  camera.position.set(0,0.6,7.5);
-  const renderer = new THREE.WebGLRenderer({canvas, antialias:true, alpha:true});
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio,2));
+  const {scene, camera, renderer} = setupRealisticScene(canvas, {camX:0.2, camY:2.6, camZ:11.5, accentHex:0x6ee7c5});
 
-  const key = new THREE.PointLight(0xffffff, 1.1);
-  key.position.set(5,5,5);
-  scene.add(key);
-  scene.add(new THREE.AmbientLight(0x404055, 1.2));
-
-  function resize(){
-    const w = canvas.clientWidth, h = canvas.clientHeight;
-    renderer.setSize(w,h,false);
-    camera.aspect = w/h;
-    camera.updateProjectionMatrix();
-  }
-  window.addEventListener('resize', resize);
-
-  const modes = [
-    { name:'Modular Core', desc:"One 3D system, restyled per brand — same engine that ships in every Nexus build.", color:0x6ee7c5, geo:()=>new THREE.IcosahedronGeometry(2,1), wire:true },
-    { name:'Dental / Clinic', desc:"A calm, clinical torus-knot representing precision care — paired with an AI booking agent.", color:0xbfe9ff, geo:()=>new THREE.TorusKnotGeometry(1.3,0.32,140,16), wire:false },
-    { name:'Real Estate', desc:"An architectural lattice of interlocking boxes — used to preview 3D property walkthroughs.", color:0xd4bc84, geo:()=>new THREE.DodecahedronGeometry(2,0), wire:true },
-    { name:'SaaS / Tech', desc:"A sharp, high-tech octahedron cluster signaling product sophistication for software brands.", color:0xa78bfa, geo:()=>new THREE.OctahedronGeometry(2.1,0), wire:false },
-    { name:'Retail', desc:"A soft, faceted sphere with warm tones — approachable, tactile, built for product storytelling.", color:0xff9d7a, geo:()=>new THREE.SphereGeometry(2,5,4), wire:true },
+  const themes = [
+    { name:'Modular Core', desc:"One 3D system, restyled per brand - same engine that ships in every Nexus build.",
+      bg1:'#0d1a17', bg2:'#07070b', accent:'#6ee7c5', accentHex:0x6ee7c5, brand:'NEXUS', url:'nexuswebsystems.dev',
+      headline:'Websites that close before the call.', sub:'A live 3D product mockup - not a screenshot.',
+      cta:'Start a project', rows:['Discovery call','3D concept','Build + automate','Ship + hand off','24/7 AI agent'] },
+    { name:'Dental / Clinic', desc:"A calm clinical theme with an AI booking agent live on the screen.",
+      bg1:'#0d191d', bg2:'#07070b', accent:'#bfe9ff', accentHex:0xbfe9ff, brand:'DAZZLE', url:'dazzledental.com',
+      headline:'A smile consultation, booked in seconds.', sub:'AI chat agent qualifies patients around the clock.',
+      cta:'Book a visit', rows:['Ask about pricing','Check insurance','See before/afters','Book consult','Live chat: online'] },
+    { name:'Real Estate', desc:"An architectural, gold-toned theme built for 3D property walkthroughs.",
+      bg1:'#1a1610', bg2:'#07070b', accent:'#d4bc84', accentHex:0xd4bc84, brand:'ESTATE', url:'primeestates.com',
+      headline:'Walk the property before you visit.', sub:'A 3D walkthrough embedded right on the listing page.',
+      cta:'View listings', rows:['3-bed - Downtown','4-bed - Lakeview','Schedule a tour','Mortgage calc','New this week'] },
+    { name:'SaaS / Tech', desc:"A sharp, high-contrast theme built for software and product-led brands.",
+      bg1:'#15111f', bg2:'#07070b', accent:'#a78bfa', accentHex:0xa78bfa, brand:'FLUXWARE', url:'fluxware.io',
+      headline:'Ship product pages that convert.', sub:'Interactive 3D demos embedded straight in your docs.',
+      cta:'Try it free', rows:['API reference','Live sandbox','Pricing tiers','Changelog','Status: operational'] },
+    { name:'Retail', desc:"A warm, tactile theme built for product storytelling and boutique retail.",
+      bg1:'#1c140f', bg2:'#07070b', accent:'#ff9d7a', accentHex:0xff9d7a, brand:'ATELIER', url:'atelierhome.shop',
+      headline:'See it in your space before you buy.', sub:'A 3D product viewer, right on the product page.',
+      cta:'Shop the drop', rows:['New arrivals','Bestsellers','Gift guide','Track order','Free shipping $75+'] },
   ];
 
-  let mesh;
-  function setMode(i){
-    if(mesh){ scene.remove(mesh); mesh.geometry.dispose(); mesh.material.dispose(); }
-    const m = modes[i];
-    const mat = m.wire
-      ? new THREE.MeshBasicMaterial({color:m.color, wireframe:true})
-      : new THREE.MeshStandardMaterial({color:m.color, metalness:0.35, roughness:0.25, flatShading:true});
-    mesh = new THREE.Mesh(m.geo(), mat);
-    scene.add(mesh);
-    document.getElementById('demo-title').textContent = m.name;
-    document.getElementById('demo-desc').textContent = m.desc;
-  }
-  setMode(0);
+  let laptop, rimLight;
+  scene.traverse(o=>{ if(o.isPointLight) rimLight = o; });
 
-  let dragging=false, lastX=0, lastY=0, rotY=0.4, rotX=0.2;
+  let dragging=false, lastX=0, lastY=0, rotY=-0.5, rotX=0.05;
+
+  function setMode(i){
+    if(laptop){ scene.remove(laptop); }
+    const th = themes[i];
+    laptop = buildLaptop(th);
+    laptop.scale.setScalar(1.05);
+    laptop.position.x = 0.9;
+    laptop.rotation.y = rotY;
+    laptop.rotation.x = rotX*0.4;
+    laptop.position.y = -0.2;
+    scene.add(laptop);
+    if(rimLight) rimLight.color.setHex(th.accentHex);
+    document.getElementById('demo-title').textContent = th.name;
+    document.getElementById('demo-desc').textContent = th.desc;
+  }
+
   canvas.addEventListener('pointerdown', e=>{dragging=true; lastX=e.clientX; lastY=e.clientY;});
   window.addEventListener('pointerup', ()=>dragging=false);
   window.addEventListener('pointermove', e=>{
@@ -948,11 +1074,18 @@ window.addEventListener('scroll', ()=>{
     });
   });
 
-  resize();
+  setMode(0);
+
+  const t0 = performance.now();
   function animate(){
     requestAnimationFrame(animate);
-    if(mesh && !dragging){ rotY += 0.004; }
-    if(mesh){ mesh.rotation.y = rotY; mesh.rotation.x = rotX*0.4; }
+    const t=(performance.now()-t0)/1000;
+    if(!dragging){ rotY += 0.0018; }
+    if(laptop){
+      laptop.rotation.y = rotY;
+      laptop.rotation.x = rotX*0.4;
+      laptop.position.y = -0.2 + Math.sin(t*0.8)*0.04;
+    }
     renderer.render(scene, camera);
   }
   requestAnimationFrame(animate);
