@@ -25,7 +25,7 @@
     --border: rgba(255,255,255,0.08);
   }
 
-  html{scroll-behavior:smooth;}
+  html{scroll-behavior:smooth;-webkit-overflow-scrolling:touch;}
   body{
     background:var(--bg);
     color:var(--text);
@@ -122,6 +122,8 @@
     width:100%;height:100%;
     z-index:1;
     opacity:0.9;
+    pointer-events:none;
+    touch-action:pan-y;
   }
   .hero-gradient{
     position:absolute;inset:0;
@@ -335,8 +337,9 @@
   #demo-canvas-wrap{
     position:relative;
     height:520px;
+    touch-action:pan-y;
   }
-  #demo-canvas{width:100%;height:100%;display:block;}
+  #demo-canvas{width:100%;height:100%;display:block;touch-action:pan-y;}
   .demo-overlay{
     position:absolute;
     left:34px;bottom:34px;
@@ -516,7 +519,7 @@
     flex-wrap:wrap;gap:10px;
   }
 
-  .reveal{opacity:0;transform:translateY(28px);transition:opacity .7s ease, transform .7s ease;}
+  .reveal{opacity:0;transform:translateY(28px);transition:opacity .7s cubic-bezier(.22,.68,0,1.01), transform .7s cubic-bezier(.22,.68,0,1.01);will-change:opacity,transform;}
   .reveal.in{opacity:1;transform:translateY(0);}
 </style>
 </head>
@@ -807,15 +810,27 @@
 /* ---------------- Reveal on scroll ---------------- */
 const revealEls = document.querySelectorAll('.reveal');
 const io = new IntersectionObserver((entries)=>{
-  entries.forEach(e=>{ if(e.isIntersecting){ e.target.classList.add('in'); io.unobserve(e.target); } });
-},{threshold:0.15});
+  entries.forEach(e=>{
+    if(e.isIntersecting){
+      e.target.classList.add('in');
+      io.unobserve(e.target);
+      e.target.addEventListener('transitionend', ()=>{ e.target.style.willChange='auto'; }, {once:true});
+    }
+  });
+},{threshold:0.15, rootMargin:'0px 0px -40px 0px'});
 revealEls.forEach(el=>io.observe(el));
 
 /* ---------------- Header scroll state ---------------- */
 const headerEl = document.getElementById('site-header');
+let headerTicking = false;
 window.addEventListener('scroll', ()=>{
-  headerEl.classList.toggle('scrolled', window.scrollY > 40);
-});
+  if(headerTicking) return;
+  headerTicking = true;
+  requestAnimationFrame(()=>{
+    headerEl.classList.toggle('scrolled', window.scrollY > 40);
+    headerTicking = false;
+  });
+}, {passive:true});
 
 /* ============================================================
    SHARED: realistic laptop-mockup builder
@@ -920,7 +935,8 @@ function setupRealisticScene(canvas, opts){
   camera.position.set(opts.camX, opts.camY, opts.camZ);
   camera.lookAt(0,0.3,0);
   const renderer = new THREE.WebGLRenderer({canvas, antialias:true, alpha:true});
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio,2));
+  const isSmall = window.innerWidth < 768;
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, isSmall?1.5:2));
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   renderer.outputEncoding = THREE.sRGBEncoding;
@@ -938,7 +954,7 @@ function setupRealisticScene(canvas, opts){
 
   const key = new THREE.DirectionalLight(0xffffff, 0.85);
   key.position.set(4, 6, 4); key.castShadow = true;
-  key.shadow.mapSize.set(1024,1024);
+  key.shadow.mapSize.set(isSmall?512:1024, isSmall?512:1024);
   key.shadow.camera.left=-6; key.shadow.camera.right=6;
   key.shadow.camera.top=6; key.shadow.camera.bottom=-6;
   key.shadow.radius = 4;
@@ -990,15 +1006,29 @@ function setupRealisticScene(canvas, opts){
   const dust = new THREE.Points(dustGeo, new THREE.PointsMaterial({color:0xd4bc84, size:0.02, transparent:true, opacity:0.5}));
   scene.add(dust);
 
-  let mouseX=0, mouseY=0;
-  window.addEventListener('mousemove',(e)=>{
-    mouseX=(e.clientX/window.innerWidth-0.5);
-    mouseY=(e.clientY/window.innerHeight-0.5);
-  });
+  let mouseX=0, mouseY=0, mouseTicking=false;
+  const hasHover = window.matchMedia('(hover: hover)').matches;
+  if(hasHover){
+    window.addEventListener('mousemove',(e)=>{
+      if(mouseTicking) return;
+      mouseTicking = true;
+      requestAnimationFrame(()=>{
+        mouseX=(e.clientX/window.innerWidth-0.5);
+        mouseY=(e.clientY/window.innerHeight-0.5);
+        mouseTicking = false;
+      });
+    }, {passive:true});
+  }
+
+  let heroVisible = true;
+  new IntersectionObserver((entries)=>{
+    heroVisible = entries[0].isIntersecting;
+  }, {threshold:0}).observe(canvas);
 
   const t0 = performance.now();
   function animate(){
     requestAnimationFrame(animate);
+    if(!heroVisible || document.hidden) return;
     const t=(performance.now()-t0)/1000;
     laptop.position.y = -0.1 + Math.sin(t*0.7)*0.05;
     laptop.rotation.y += (-0.5 + mouseX*0.4 - laptop.rotation.y)*0.02;
@@ -1057,14 +1087,14 @@ function setupRealisticScene(canvas, opts){
     document.getElementById('demo-desc').textContent = th.desc;
   }
 
-  canvas.addEventListener('pointerdown', e=>{dragging=true; lastX=e.clientX; lastY=e.clientY;});
-  window.addEventListener('pointerup', ()=>dragging=false);
+  canvas.addEventListener('pointerdown', e=>{dragging=true; lastX=e.clientX; lastY=e.clientY;}, {passive:true});
+  window.addEventListener('pointerup', ()=>dragging=false, {passive:true});
   window.addEventListener('pointermove', e=>{
     if(!dragging) return;
     rotY += (e.clientX-lastX)*0.006;
     rotX += (e.clientY-lastY)*0.006;
     lastX=e.clientX; lastY=e.clientY;
-  });
+  }, {passive:true});
 
   document.querySelectorAll('.demo-controls button').forEach(btn=>{
     btn.addEventListener('click', ()=>{
@@ -1076,9 +1106,15 @@ function setupRealisticScene(canvas, opts){
 
   setMode(0);
 
+  let demoVisible = true;
+  new IntersectionObserver((entries)=>{
+    demoVisible = entries[0].isIntersecting;
+  }, {threshold:0}).observe(canvas);
+
   const t0 = performance.now();
   function animate(){
     requestAnimationFrame(animate);
+    if(!demoVisible || document.hidden) return;
     const t=(performance.now()-t0)/1000;
     if(!dragging){ rotY += 0.0018; }
     if(laptop){
